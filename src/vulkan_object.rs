@@ -156,7 +156,7 @@ pub struct Command {
     pub video_coding: CommandScope,
     #[serde(rename = "implicitExternSyncParams")]
     pub implicit_extern_sync_params: Vec<String>,
-    pub legacy: Option<Box<Legacy>>,
+    pub legacy: Option<Legacy>,
     #[serde(rename = "cPrototype")]
     pub c_prototype: String,
     #[serde(rename = "cFunctionPointer")]
