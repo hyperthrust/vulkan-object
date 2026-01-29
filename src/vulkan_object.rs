@@ -62,7 +62,7 @@ pub struct Version {
 #[derive(Clone, Debug, Deserialize, Serialize)]
 pub struct Legacy {
     pub link: Option<String>,
-    pub version: Option<Box<Version>>,
+    pub version: Option<Version>,
     pub extensions: Vec<String>,
 }
 
@@ -134,7 +134,7 @@ pub struct Command {
     pub alias: Option<String>,
     pub protect: Option<String>,
     pub extensions: Vec<String>,
-    pub version: Option<Box<Version>>,
+    pub version: Option<Version>,
     #[serde(rename = "returnType")]
     pub return_type: String,
     pub params: Vec<Param>,
@@ -200,7 +200,7 @@ pub struct Struct {
     pub name: String,
     pub aliases: Vec<String>,
     pub extensions: Vec<String>,
-    pub version: Option<Box<Version>>,
+    pub version: Option<Version>,
     pub protect: Option<String>,
     pub members: Vec<Member>,
     pub union: bool,

@@ -18,10 +18,14 @@ mod tests {
 
     #[test]
     fn test_round_trip_serialization() {
+        // Do one round to have a predictable JSON string.
         let expected =
             serde_json::to_string(&serde_json::from_str::<serde_json::Value>(VK_JSON).unwrap())
                 .unwrap();
+        // Deserialize and then serialize to JSON string.
         let actual = serde_json::to_string(&load_vulkan_object()).unwrap();
+
+        // Compare both JSON strings, they have to match.
         assert!(expected == actual);
     }
 }
