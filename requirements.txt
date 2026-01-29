@@ -1,11 +1,1 @@
-annotated-types==0.7.0
-apischema==0.19.0
-dacite==1.9.2
-deepdiff==8.6.1
-orderly-set==5.5.0
-pydantic==2.12.5
-pydantic_core==2.41.5
-tomli_w==1.2.0
-typing-inspection==0.4.2
-typing_extensions==4.15.0
 vulkan-object==1.4.341

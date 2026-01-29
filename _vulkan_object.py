@@ -5,8 +5,7 @@
 # SPDX-License-Identifier: Apache-2.0
 
 from dataclasses import dataclass, field
-from enum import Enum as PythonEnum
-from enum import auto
+from enum import Enum, auto
 
 
 @dataclass
@@ -48,16 +47,16 @@ class Extension:
     # These are here to allow for easy reverse lookups
     # To prevent infinite recursion, other classes reference a string back to the Extension class
     # Quotes allow us to forward declare the dataclass
-    handles: list["Handle"] = field(default_factory=list)
-    commands: list["Command"] = field(default_factory=list)
-    structs: list["Struct"] = field(default_factory=list)
-    enums: list["Enum"] = field(default_factory=list)
-    bitmasks: list["Bitmask"] = field(default_factory=list)
-    flags: dict[str, list["Flags"]] = field(default_factory=dict)
+    handles: list["Handle"] = field(default_factory=list, init=False)
+    commands: list["Command"] = field(default_factory=list, init=False)
+    structs: list["Struct"] = field(default_factory=list, init=False)
+    enums: list["Enum"] = field(default_factory=list, init=False)
+    bitmasks: list["Bitmask"] = field(default_factory=list, init=False)
+    flags: dict[str, list["Flags"]] = field(default_factory=dict, init=False)
     # Use the Enum name to see what fields are extended
-    enumFields: dict[str, list["EnumField"]] = field(default_factory=dict)
+    enumFields: dict[str, list["EnumField"]] = field(default_factory=dict, init=False)
     # Use the Bitmask name to see what flag bits are added to it
-    flagBits: dict[str, list["Flag"]] = field(default_factory=dict)
+    flagBits: dict[str, list["Flag"]] = field(default_factory=dict, init=False)
 
 
 @dataclass
@@ -95,7 +94,7 @@ class Handle:
     type: str  # ex) VK_OBJECT_TYPE_BUFFER
     protect: str | None  # ex) VK_USE_PLATFORM_ANDROID_KHR
 
-    parent: "Handle | None"  # Chain of parent handles, can be None
+    parent: "Handle"  # Chain of parent handles, can be None
 
     # Only one will be True, the other is False
     instance: bool
@@ -109,7 +108,7 @@ class Handle:
         return self.name < other.name
 
 
-class ExternSync(PythonEnum):
+class ExternSync(Enum):
     NONE = auto()  # no externsync attribute
     ALWAYS = auto()  # externsync="true"
     MAYBE = auto()  # externsync="maybe"
@@ -122,7 +121,7 @@ class Param:
     """<command/param>"""
 
     name: str  # ex) pCreateInfo, pAllocator, pBuffer
-    alias: str | None
+    alias: str
 
     # the "base type" - will not preserve the 'const' or pointer info
     # ex) void, uint32_t, VkFormat, VkBuffer, etc
@@ -147,7 +146,7 @@ class Param:
     optional: bool
     optionalPointer: bool  # if type contains a pointer, is the pointer value optional
 
-    externSync: int  # ExternSync
+    externSync: ExternSync
     externSyncPointer: (
         str | None
     )  # if type contains a pointer (externSync is SUBTYPE*),
@@ -163,7 +162,7 @@ class Param:
         return self.name < other.name
 
 
-class CommandScope(PythonEnum):
+class CommandScope(Enum):
     NONE = auto()
     INSIDE = auto()
     OUTSIDE = auto()
@@ -203,8 +202,8 @@ class Command:
     primary: bool
     secondary: bool
 
-    renderPass: int  # CommandScope
-    videoCoding: int  # CommandScope
+    renderPass: CommandScope
+    videoCoding: CommandScope
 
     implicitExternSyncParams: list[str]
 
@@ -256,7 +255,7 @@ class Member:
     optional: bool
     optionalPointer: bool  # if type contains a pointer, is the pointer value optional
 
-    externSync: int  # ExternSync
+    externSync: ExternSync
 
     # C string of member, example:
     #   - const void* pNext
@@ -358,7 +357,7 @@ class Flag:
     """<enum> of type bitmask"""
 
     name: str  # ex) VK_ACCESS_2_SHADER_READ_BIT
-    aliases: list[str]  # ex) ['VK_ACCESS_2_SHADER_READ_BIT_KHR']
+    aliases: str  # ex) ['VK_ACCESS_2_SHADER_READ_BIT_KHR']
 
     protect: str | None  # ex) VK_ENABLE_BETA_EXTENSIONS
 
@@ -471,8 +470,8 @@ class Format:
 class SyncSupport:
     """<syncsupport>"""
 
-    queues: list[str] | None  # ex) [ VK_QUEUE_GRAPHICS_BIT, VK_QUEUE_COMPUTE_BIT ]
-    stages: list[Flag] | None  # VkPipelineStageFlagBits2
+    queues: list[str]  # ex) [ VK_QUEUE_GRAPHICS_BIT, VK_QUEUE_COMPUTE_BIT ]
+    stages: list[Flag]  # VkPipelineStageFlagBits2
     max: bool  # If this supports max values
 
 
@@ -480,8 +479,8 @@ class SyncSupport:
 class SyncEquivalent:
     """<syncequivalent>"""
 
-    stages: list[Flag] | None  # VkPipelineStageFlagBits2
-    accesses: list[Flag] | None  # VkAccessFlagBits2
+    stages: list[Flag]  # VkPipelineStageFlagBits2
+    accesses: list[Flag]  # VkAccessFlagBits2
     max: bool  # If this equivalent to everything
 
 
@@ -624,47 +623,47 @@ class VideoStdHeader:
 
 @dataclass
 class VideoStd:
-    headers: dict[str, VideoStdHeader] = field(default_factory=dict)
+    headers: dict[str, VideoStdHeader] = field(default_factory=dict, init=False)
 
-    enums: dict[str, Enum] = field(default_factory=dict)
-    structs: dict[str, Struct] = field(default_factory=dict)
-    constants: dict[str, Constant] = field(default_factory=dict)
+    enums: dict[str, Enum] = field(default_factory=dict, init=False)
+    structs: dict[str, Struct] = field(default_factory=dict, init=False)
+    constants: dict[str, Constant] = field(default_factory=dict, init=False)
 
 
 # This is the global Vulkan Object that holds all the information from parsing the XML
 # This class is designed so all generator scripts can use this to obtain data
 @dataclass
 class VulkanObject:
-    headerVersion: str = ""  # value of VK_HEADER_VERSION (ex. 345)
+    headerVersion: int = 0  # value of VK_HEADER_VERSION (ex. 345)
     headerVersionComplete: str = (
         ""  # value of VK_HEADER_VERSION_COMPLETE (ex. '1.2.345' )
     )
 
-    extensions: dict[str, Extension] = field(default_factory=dict)
-    versions: dict[str, Version] = field(default_factory=dict)
+    extensions: dict[str, Extension] = field(default_factory=dict, init=False)
+    versions: dict[str, Version] = field(default_factory=dict, init=False)
 
-    handles: dict[str, Handle] = field(default_factory=dict)
-    commands: dict[str, Command] = field(default_factory=dict)
-    structs: dict[str, Struct] = field(default_factory=dict)
-    enums: dict[str, Enum] = field(default_factory=dict)
-    bitmasks: dict[str, Bitmask] = field(default_factory=dict)
-    flags: dict[str, Flags] = field(default_factory=dict)
-    constants: dict[str, Constant] = field(default_factory=dict)
-    formats: dict[str, Format] = field(default_factory=dict)
+    handles: dict[str, Handle] = field(default_factory=dict, init=False)
+    commands: dict[str, Command] = field(default_factory=dict, init=False)
+    structs: dict[str, Struct] = field(default_factory=dict, init=False)
+    enums: dict[str, Enum] = field(default_factory=dict, init=False)
+    bitmasks: dict[str, Bitmask] = field(default_factory=dict, init=False)
+    flags: dict[str, Flags] = field(default_factory=dict, init=False)
+    constants: dict[str, Constant] = field(default_factory=dict, init=False)
+    formats: dict[str, Format] = field(default_factory=dict, init=False)
 
-    syncStage: list[SyncStage] = field(default_factory=list)
-    syncAccess: list[SyncAccess] = field(default_factory=list)
-    syncPipeline: list[SyncPipeline] = field(default_factory=list)
+    syncStage: list[SyncStage] = field(default_factory=list, init=False)
+    syncAccess: list[SyncAccess] = field(default_factory=list, init=False)
+    syncPipeline: list[SyncPipeline] = field(default_factory=list, init=False)
 
-    spirv: list[Spirv] = field(default_factory=list)
+    spirv: list[Spirv] = field(default_factory=list, init=False)
 
     # ex) [ xlib : VK_USE_PLATFORM_XLIB_KHR ]
-    platforms: dict[str, str] = field(default_factory=dict)
+    platforms: dict[str, str] = field(default_factory=dict, init=False)
     # list of all vendor Suffix names (KHR, EXT, etc. )
-    vendorTags: list[str] = field(default_factory=list)
+    vendorTags: list[str] = field(default_factory=list, init=False)
 
     # Video codec information from the vk.xml
-    videoCodecs: dict[str, VideoCodec] = field(default_factory=dict)
+    videoCodecs: dict[str, VideoCodec] = field(default_factory=dict, init=False)
 
     # Video Std header information from the video.xml
     videoStd: VideoStd | None = None
