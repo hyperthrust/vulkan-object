@@ -2,6 +2,7 @@ use std::env::var;
 use std::fs;
 use std::fs::read_to_string;
 use std::path::Path;
+use std::process::Command;
 
 use schemars::schema::RootSchema;
 use serde_json::from_str;
@@ -24,7 +25,14 @@ fn main() {
         .add_root_schema(schema)
         .expect("failed to process schema");
     let contents = type_space.to_stream().to_string();
-    fs::write(manifest_path.join("src/schema.rs"), contents).expect("failed to write schema.rs");
+    let schema_path = manifest_path.join("src/schema.rs");
+    fs::write(&schema_path, contents).expect("failed to write schema.rs");
+
+    // Format the generated schema.rs.
+    Command::new("rustfmt")
+        .arg(&schema_path)
+        .status()
+        .expect("failed to run rustfmt on schema.rs");
 
     // Copy vk.json to OUT_DIR.
     let vk_json_src = manifest_path.join("vk.json");
