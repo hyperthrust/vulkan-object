@@ -1,8 +1,8 @@
 # vulkan-object
 
 [![Crates.io Version](https://img.shields.io/crates/v/vulkan-object.svg)](https://crates.io/crates/vulkan-object)
-![docs.rs](https://img.shields.io/docsrs/vulkan-object)
-![Crates.io License](https://img.shields.io/crates/l/vulkan-object)
+[![docs.rs](https://img.shields.io/docsrs/vulkan-object)](https://docs.rs/vulkan-object)
+[![Crates.io License](https://img.shields.io/crates/l/vulkan-object)](https://github.com/hyperthrust/vulkan-object/blob/main/LICENSE)
 
 Rust bindings for [vulkan-object](https://github.com/KhronosGroup/vulkan-object), providing typed access to Vulkan API metadata.
 
