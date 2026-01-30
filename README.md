@@ -1,4 +1,4 @@
-# vulkan-object 1.4.342
+# vulkan-object
 
 [![Crates.io Version](https://img.shields.io/crates/v/vulkan-object.svg)](https://crates.io/crates/vulkan-object)
 ![docs.rs](https://img.shields.io/docsrs/vulkan-object)
