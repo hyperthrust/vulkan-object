@@ -1,6 +1,6 @@
 [package]
 name = "vulkan-object"
-version = "0.6.1+1.4.342"
+version = "0.6.2+1.4.342"
 edition = "2024"
 authors = ["Christopher Probst-Ranly"]
 license = "MIT"
