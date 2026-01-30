@@ -1,6 +1,6 @@
 [package]
 name = "vulkan-object"
-version = "0.4.0+1.4.341"
+version = "0.5.0+1.4.341"
 authors = ["Christopher Probst-Ranly"]
 edition = "2024"
 description = "Rust bindings for vulkan-object, providing typed access to Vulkan API metadata."
