@@ -1,10 +1,12 @@
-# vulkan-object 1.4.341
+# vulkan-object 1.4.342
 
 [![Crates.io Version](https://img.shields.io/crates/v/vulkan-object.svg)](https://crates.io/crates/vulkan-object)
 ![docs.rs](https://img.shields.io/docsrs/vulkan-object)
 ![Crates.io License](https://img.shields.io/crates/l/vulkan-object)
 
 Rust bindings for [vulkan-object](https://github.com/KhronosGroup/vulkan-object), providing typed access to Vulkan API metadata.
+
+This library exposes both `vk.xml` and `video.xml` at once.
 
 ## API
 

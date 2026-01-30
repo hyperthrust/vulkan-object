@@ -118,6 +118,8 @@ pub struct Extension {
     pub name_string: String,
     #[serde(rename = "specVersion")]
     pub spec_version: String,
+    #[serde(rename = "specVersionValue")]
+    pub spec_version_value: u32,
     pub instance: bool,
     pub device: bool,
     pub depends: Option<String>,
@@ -175,6 +177,7 @@ pub struct Flag {
     pub value: u64,
     #[serde(rename = "valueStr")]
     pub value_str: String,
+    pub bitpos: Option<u32>,
     #[serde(rename = "multiBit")]
     pub multi_bit: bool,
     pub zero: bool,
@@ -236,6 +239,29 @@ pub struct FormatPlane {
     #[serde(rename = "heightDivisor")]
     pub height_divisor: u32,
     pub compatible: String,
+}
+
+#[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
+pub struct FuncPointer {
+    pub name: String,
+    pub protect: Option<String>,
+    #[serde(rename = "returnType")]
+    pub return_type: String,
+    pub requires: Option<String>,
+    pub params: Vec<FuncPointerParam>,
+    #[serde(rename = "cFunctionPointer")]
+    pub c_function_pointer: String,
+}
+
+#[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
+pub struct FuncPointerParam {
+    pub name: String,
+    #[serde(rename = "type")]
+    pub type_: String,
+    #[serde(rename = "fullType")]
+    pub full_type: String,
+    #[serde(rename = "cDeclaration")]
+    pub c_declaration: String,
 }
 
 #[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
@@ -488,6 +514,8 @@ pub struct VulkanObject {
     pub flags: IndexMap<String, Flags>,
     pub constants: IndexMap<String, Constant>,
     pub formats: IndexMap<String, Format>,
+    #[serde(rename = "funcPointers")]
+    pub func_pointers: IndexMap<String, FuncPointer>,
     #[serde(rename = "syncStage")]
     pub sync_stage: Vec<SyncStage>,
     #[serde(rename = "syncAccess")]
