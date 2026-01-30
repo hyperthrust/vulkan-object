@@ -203,7 +203,7 @@ class EnumEncoder(JSONEncoder):
 
 if __name__ == "__main__":
     # Generate vk.json.
-    vulkan_object = get_vulkan_object()
+    vulkan_object = get_vulkan_object(video=True)
     with open("src/vk.json", "w", encoding="utf-8", newline="\n") as f:
         dump(asdict(vulkan_object), f, indent=2, cls=EnumEncoder)
     print("Generated src/vk.json")
