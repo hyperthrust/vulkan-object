@@ -44,19 +44,19 @@ pub struct {name} {{
 # ---------------------------------------------------- #
 
 TYPE_OVERRIDES = {
-    ("Flag", "aliases"): "Option<Vec<String>>",
-    ("SyncSupport", "queues"): "Option<Vec<String>>",
-    ("SyncSupport", "stages"): "Option<Vec<Flag>>",
-    ("SyncEquivalent", "stages"): "Option<Vec<Flag>>",
-    ("SyncEquivalent", "accesses"): "Option<Vec<Flag>>",
-    ("VulkanObject", "headerVersion"): "String",
-    ("Param", "alias"): "Option<String>",
     ("Constant", "value"): "ConstantValue",
     ("EnumField", "value"): "i64",
+    ("Flag", "aliases"): "Option<Vec<String>>",
     ("Flag", "value"): "u64",
+    ("Handle", "parent"): "Option<Box<Handle>>",  # Recursive type needs Box
+    ("Param", "alias"): "Option<String>",
+    ("SyncEquivalent", "accesses"): "Option<Vec<Flag>>",
+    ("SyncEquivalent", "stages"): "Option<Vec<Flag>>",
+    ("SyncSupport", "queues"): "Option<Vec<String>>",
+    ("SyncSupport", "stages"): "Option<Vec<Flag>>",
+    ("VulkanObject", "headerVersion"): "String",
 }
 NO_EQ_OVERRIDES = {"ConstantValue", "Constant", "VideoStd", "VulkanObject"}
-BOXED_FIELD_OVERRIDES = {("Handle", "parent")}
 TEMPLATE_OVERRIDES = {
     "ConstantValue": """\
 #[derive(Clone, Debug, Deserialize, PartialEq, Serialize)]
@@ -83,26 +83,17 @@ def to_rust_field_name(name: str) -> tuple[str, bool]:
     return snake_case, snake_case != name
 
 
-def wrap_boxed(rust_type: str, class_name: str, field_name: str) -> str:
-    """Wrap type in Option<Box<>> if it's a boxed field."""
-
-    if (class_name, field_name) in BOXED_FIELD_OVERRIDES:
-        return f"Option<Box<{rust_type}>>"
-    return rust_type
-
-
 def python_type_to_rust(py_type, class_name: str, field_name: str) -> str:
     """Convert a Python type to a Rust type string."""
 
-    # First check type overrides and then basic types.
     if rust_type := TYPE_OVERRIDES.get((class_name, field_name)):
         return rust_type
     if rust_type := BASIC_TYPES.get(py_type):
         return rust_type
 
     # Class references (dataclasses, enums).
-    if isinstance(py_type, type) and not get_origin(py_type):
-        return wrap_boxed(py_type.__name__, class_name, field_name)
+    if isinstance(py_type, type):
+        return py_type.__name__
 
     origin = get_origin(py_type)
     args = get_args(py_type)
@@ -111,22 +102,19 @@ def python_type_to_rust(py_type, class_name: str, field_name: str) -> str:
     if origin is UnionType:
         non_none = [a for a in args if a is not NoneType]
         if len(non_none) == 1:
-            inner = python_type_to_rust(non_none[0], class_name, field_name)
-            return (
-                wrap_boxed(inner, class_name, field_name)
-                if (class_name, field_name) in BOXED_FIELD_OVERRIDES
-                else f"Option<{inner}>"
-            )
+            return f"Option<{python_type_to_rust(non_none[0], class_name, field_name)}>"
         if set(args) == {int, float}:
             return "ConstantValue"
 
+    # Lists.
     if origin is list:
         return f"Vec<{python_type_to_rust(args[0], class_name, field_name)}>"
 
+    # Dicts.
     if origin is dict:
-        key = python_type_to_rust(args[0], class_name, field_name)
-        val = python_type_to_rust(args[1], class_name, field_name)
-        return f"IndexMap<{key}, {val}>"
+        k = python_type_to_rust(args[0], class_name, field_name)
+        v = python_type_to_rust(args[1], class_name, field_name)
+        return f"IndexMap<{k}, {v}>"
 
     return "UNKNOWN"
 
