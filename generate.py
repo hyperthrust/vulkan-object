@@ -1,16 +1,49 @@
-import ast
 import inspect
 import re
-from dataclasses import asdict
+from dataclasses import asdict, fields, is_dataclass
 from enum import Enum
 from json import JSONEncoder, dump
 from pathlib import Path
+from types import NoneType, UnionType
+from typing import get_args, get_origin, get_type_hints
 
 from vulkan_object import get_vulkan_object
 from vulkan_object import vulkan_object as vulkan_object_module
 
-# Type overrides for known inconsistencies.
-FIELD_TYPE_OVERRIDES = {
+# --------------- #
+# Regular consts. #
+# --------------- #
+
+RESERVED_KEYWORDS = {"type", "struct", "const"}
+BASIC_TYPES = {str: "String", bool: "bool", float: "f64", int: "u32", NoneType: "None"}
+
+# ---------------------------- #
+# Regular Rust code templates. #
+# ---------------------------- #
+
+RUST_HEADER = """\
+use indexmap::IndexMap;
+use serde::{Deserialize, Serialize};
+use serde_repr::{Deserialize_repr, Serialize_repr};"""
+ENUM_TEMPLATE = """\
+#[derive(Clone, Copy, Debug, Deserialize_repr, Eq, PartialEq, Serialize_repr)]
+#[repr(u8)]
+pub enum {name} {{
+{fields}
+}}"""
+STRUCT_TEMPLATE = """\
+#[derive({derives})]
+pub struct {name} {{
+{fields}
+}}"""
+
+
+# ---------------------------------------------------- #
+# Adaption code for current shape of vulkan_object.py. #
+# This could change in the future.                     #
+# ---------------------------------------------------- #
+
+TYPE_OVERRIDES = {
     ("Flag", "aliases"): "Option<Vec<String>>",
     ("SyncSupport", "queues"): "Option<Vec<String>>",
     ("SyncSupport", "stages"): "Option<Vec<Flag>>",
@@ -19,167 +52,163 @@ FIELD_TYPE_OVERRIDES = {
     ("VulkanObject", "headerVersion"): "String",
     ("Param", "alias"): "Option<String>",
     ("Constant", "value"): "ConstantValue",
-}
-
-# Fields that need Box<> for recursive types.
-BOXED_FIELDS = {("Handle", "parent")}
-
-# Fields where int maps to specific Rust types.
-INT_TYPE_OVERRIDES = {
     ("EnumField", "value"): "i64",
     ("Flag", "value"): "u64",
 }
+NO_EQ_OVERRIDES = {"ConstantValue", "Constant", "VideoStd", "VulkanObject"}
+BOXED_FIELD_OVERRIDES = {("Handle", "parent")}
+TEMPLATE_OVERRIDES = {
+    "ConstantValue": """\
+#[derive(Clone, Debug, Deserialize, PartialEq, Serialize)]
+#[serde(untagged)]
+pub enum ConstantValue {
+    Int(u64),
+    Float(f64),
+}"""
+}
 
-RESERVED_KEYWORDS = {"type", "struct", "const"}
+
+def to_rust_enum_variant_name(name: str) -> str:
+    """Convert screaming snake case to pascal case."""
+
+    return name.replace("_", " ").title().replace(" ", "")
 
 
-def to_snake_case(name: str) -> str:
-    return re.sub(r"([a-z])([A-Z])", r"\1_\2", name).lower()
+def to_rust_field_name(name: str) -> tuple[str, bool]:
+    """Convert pascal case to snake case, returning (rust_name, needs_serde_rename)."""
+
+    snake_case = re.sub(r"([a-z])([A-Z])", r"\1_\2", name).lower()
+    if name in RESERVED_KEYWORDS:
+        return name + "_", True
+    return snake_case, snake_case != name
 
 
-def parse_type(node, class_name: str, field_name: str) -> str:
-    override = FIELD_TYPE_OVERRIDES.get((class_name, field_name))
-    if override:
-        return override
-    if isinstance(node, ast.Constant) and node.value is None:
-        return "None"
-    if isinstance(node, ast.Name):
-        name = node.id
-        if name == "str":
-            return "String"
-        if name == "bool":
-            return "bool"
-        if name == "int":
-            return INT_TYPE_OVERRIDES.get((class_name, field_name), "u32")
-        if name == "float":
-            return "f64"
-        return name
-    if isinstance(node, ast.Subscript):
-        base = node.value.id if isinstance(node.value, ast.Name) else str(node.value)
-        if base == "list":
-            inner = parse_type(node.slice, class_name, field_name)
-            return f"Vec<{inner}>"
-        if base == "dict":
-            if isinstance(node.slice, ast.Tuple):
-                key = parse_type(node.slice.elts[0], class_name, field_name)
-                val = parse_type(node.slice.elts[1], class_name, field_name)
-                return f"IndexMap<{key}, {val}>"
-    if isinstance(node, ast.BinOp) and isinstance(node.op, ast.BitOr):
-        left = parse_type(node.left, class_name, field_name)
-        right = parse_type(node.right, class_name, field_name)
-        if right == "None":
-            if (class_name, field_name) in BOXED_FIELDS:
-                return f"Option<Box<{left}>>"
-            return f"Option<{left}>"
-        if left == "int" and right == "float":
+def wrap_boxed(rust_type: str, class_name: str, field_name: str) -> str:
+    """Wrap type in Option<Box<>> if it's a boxed field."""
+
+    if (class_name, field_name) in BOXED_FIELD_OVERRIDES:
+        return f"Option<Box<{rust_type}>>"
+    return rust_type
+
+
+def python_type_to_rust(py_type, class_name: str, field_name: str) -> str:
+    """Convert a Python type to a Rust type string."""
+
+    # First check type overrides and then basic types.
+    if rust_type := TYPE_OVERRIDES.get((class_name, field_name)):
+        return rust_type
+    if rust_type := BASIC_TYPES.get(py_type):
+        return rust_type
+
+    # Class references (dataclasses, enums).
+    if isinstance(py_type, type) and not get_origin(py_type):
+        return wrap_boxed(py_type.__name__, class_name, field_name)
+
+    origin = get_origin(py_type)
+    args = get_args(py_type)
+
+    # Union types (T | None).
+    if origin is UnionType:
+        non_none = [a for a in args if a is not NoneType]
+        if len(non_none) == 1:
+            inner = python_type_to_rust(non_none[0], class_name, field_name)
+            return (
+                wrap_boxed(inner, class_name, field_name)
+                if (class_name, field_name) in BOXED_FIELD_OVERRIDES
+                else f"Option<{inner}>"
+            )
+        if set(args) == {int, float}:
             return "ConstantValue"
-    if isinstance(node, ast.Constant) and isinstance(node.value, str):
-        name = node.value
-        if (class_name, field_name) in BOXED_FIELDS:
-            return f"Option<Box<{name}>>"
-        return name
+
+    if origin is list:
+        return f"Vec<{python_type_to_rust(args[0], class_name, field_name)}>"
+
+    if origin is dict:
+        key = python_type_to_rust(args[0], class_name, field_name)
+        val = python_type_to_rust(args[1], class_name, field_name)
+        return f"IndexMap<{key}, {val}>"
+
     return "UNKNOWN"
 
 
-def extract_classes(source: str) -> tuple[dict, dict]:
-    tree = ast.parse(source)
-    dataclasses = {}
-    enums = {}
-    for node in ast.walk(tree):
-        if isinstance(node, ast.ClassDef):
-            is_dataclass = any(
-                (isinstance(d, ast.Name) and d.id == "dataclass")
-                or (
-                    isinstance(d, ast.Call)
-                    and isinstance(d.func, ast.Name)
-                    and d.func.id == "dataclass"
-                )
-                for d in node.decorator_list
-            )
-            is_enum = any(
-                isinstance(b, ast.Name) and b.id == "Enum" for b in node.bases
-            )
-            if is_enum:
-                values = []
-                for item in node.body:
-                    if isinstance(item, ast.Assign) and isinstance(
-                        item.targets[0], ast.Name
-                    ):
-                        values.append(item.targets[0].id)
-                enums[node.name] = values
-            elif is_dataclass:
-                fields = []
-                for item in node.body:
-                    if isinstance(item, ast.AnnAssign) and isinstance(
-                        item.target, ast.Name
-                    ):
-                        field_name = item.target.id
-                        rust_type = parse_type(item.annotation, node.name, field_name)
-                        fields.append((field_name, rust_type))
-                dataclasses[node.name] = fields
-    return dataclasses, enums
+def extract_classes(module) -> tuple[dict, dict]:
+    """Extract dataclasses and enums from a module using runtime introspection."""
 
+    dataclasses_dict = {}
+    enums_dict = {}
 
-def generate_rust(dataclasses: dict, enums: dict) -> str:
-    lines = [
-        "use indexmap::IndexMap;",
-        "use serde::{Deserialize, Serialize};",
-        "use serde_repr::{Deserialize_repr, Serialize_repr};",
-        "",
-    ]
-    # f64 doesn't impl Eq, so types containing ConstantValue can't derive Eq.
-    no_eq = {"ConstantValue", "Constant", "VideoStd", "VulkanObject"}
-    all_names = sorted(set(dataclasses.keys()) | set(enums.keys()) | {"ConstantValue"})
-    for name in all_names:
-        if name == "ConstantValue":
-            lines += [
-                "#[derive(Clone, Debug, Deserialize, PartialEq, Serialize)]",
-                "#[serde(untagged)]",
-                "pub enum ConstantValue {",
-                "    Int(u64),",
-                "    Float(f64),",
-                "}",
-                "",
+    for name, cls in inspect.getmembers(module, inspect.isclass):
+        # Skip imported classes (only process classes defined in this module).
+        if cls.__module__ != module.__name__:
+            continue
+
+        if is_dataclass(cls):
+            hints = get_type_hints(cls)
+            field_list = [
+                (f.name, python_type_to_rust(hints[f.name], name, f.name))
+                for f in fields(cls)
             ]
-        elif name in enums:
-            lines.append(
-                "#[derive(Clone, Copy, Debug, Deserialize_repr, Eq, PartialEq, Serialize_repr)]"
-            )
-            lines.append("#[repr(u8)]")
-            lines.append(f"pub enum {name} {{")
-            for i, v in enumerate(enums[name], 1):
-                rust_name = v.replace("_", " ").title().replace(" ", "")
-                lines.append(f"    {rust_name} = {i},")
-            lines.append("}")
-            lines.append("")
-        elif name in dataclasses:
-            derives = ["Clone", "Debug"]
-            if name == "VideoStd":
-                derives.append("Default")
-            derives.append("Deserialize")
-            if name not in no_eq:
-                derives.append("Eq")
-            derives.append("PartialEq")
-            derives.append("Serialize")
-            lines.append(f"#[derive({', '.join(derives)})]")
-            lines.append(f"pub struct {name} {{")
-            for field_name, rust_type in dataclasses[name]:
-                snake_name = to_snake_case(field_name)
-                needs_rename = (
-                    snake_name != field_name or field_name in RESERVED_KEYWORDS
-                )
-                if field_name in RESERVED_KEYWORDS:
-                    snake_name = field_name + "_"
-                if needs_rename:
-                    lines.append(f'    #[serde(rename = "{field_name}")]')
-                lines.append(f"    pub {snake_name}: {rust_type},")
-            lines.append("}")
-            lines.append("")
-    return "\n".join(lines)
+            dataclasses_dict[name] = field_list
+        elif issubclass(cls, Enum):
+            enums_dict[name] = [member.name for member in cls]
+
+    return dataclasses_dict, enums_dict
 
 
-# Required to convert normal enum to integer.
+def generate_enum(name: str, const_variants: list[str]) -> str:
+    """Generates a Rust enum."""
+
+    return ENUM_TEMPLATE.format(
+        name=name,
+        fields="\n".join(
+            [
+                f"    {to_rust_enum_variant_name(v)} = {i},"
+                for i, v in enumerate(const_variants, 1)
+            ]
+        ),
+    )
+
+
+def generate_struct(name: str, struct_fields: list[tuple[str, str]]) -> str:
+    """Generates a Rust struct."""
+
+    derives = (
+        ["Clone", "Debug", "Deserialize"]
+        + (["Eq"] if name not in NO_EQ_OVERRIDES else [])
+        + ["PartialEq", "Serialize"]
+    )
+
+    field_lines = []
+    for field_name, rust_type in struct_fields:
+        rust_name, needs_rename = to_rust_field_name(field_name)
+        if needs_rename:
+            field_lines.append(f'    #[serde(rename = "{field_name}")]')
+        field_lines.append(f"    pub {rust_name}: {rust_type},")
+
+    return STRUCT_TEMPLATE.format(
+        derives=", ".join(derives), name=name, fields="\n".join(field_lines)
+    )
+
+
+def generate_rust(dataclasses_dict: dict, enums_dict: dict) -> str:
+    """Generate complete Rust code from extracted classes."""
+
+    sections = [RUST_HEADER]
+    for name in sorted(
+        dataclasses_dict.keys() | enums_dict.keys() | TEMPLATE_OVERRIDES.keys()
+    ):
+        if template := TEMPLATE_OVERRIDES.get(name):
+            sections.append(template)
+        elif name in enums_dict:
+            sections.append(generate_enum(name, enums_dict[name]))
+        elif name in dataclasses_dict:
+            sections.append(generate_struct(name, dataclasses_dict[name]))
+    return "\n\n".join(sections) + "\n"
+
+
 class EnumEncoder(JSONEncoder):
+    """Converts enum to integer.."""
+
     def default(self, obj):
         if isinstance(obj, Enum):
             return obj.value
@@ -187,12 +216,14 @@ class EnumEncoder(JSONEncoder):
 
 
 if __name__ == "__main__":
+    # Generate vk.json.
     vulkan_object = get_vulkan_object()
     with open("src/vk.json", "w", encoding="utf-8", newline="\n") as f:
         dump(asdict(vulkan_object), f, indent=2, cls=EnumEncoder)
     print("Generated src/vk.json")
 
-    dataclasses, enums = extract_classes(inspect.getsource(vulkan_object_module))
+    # Generate vulkan_object.rs.
+    dataclasses, enums = extract_classes(vulkan_object_module)
     rust_code = generate_rust(dataclasses, enums)
     (Path(__file__).parent / "src" / "vulkan_object.rs").write_text(
         rust_code, encoding="utf-8", newline="\n"
