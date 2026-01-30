@@ -455,7 +455,7 @@ pub struct VideoRequiredCapabilities {
     pub value: String,
 }
 
-#[derive(Clone, Debug, Default, Deserialize, PartialEq, Serialize)]
+#[derive(Clone, Debug, Deserialize, PartialEq, Serialize)]
 pub struct VideoStd {
     pub headers: IndexMap<String, VideoStdHeader>,
     pub enums: IndexMap<String, Enum>,
