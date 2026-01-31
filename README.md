@@ -1,12 +1,16 @@
 # vulkan-object
 
-[![Crates.io Version](https://img.shields.io/crates/v/vulkan-object.svg)](https://crates.io/crates/vulkan-object)
-[![docs.rs](https://img.shields.io/docsrs/vulkan-object)](https://docs.rs/vulkan-object)
-[![Crates.io License](https://img.shields.io/crates/l/vulkan-object)](https://github.com/hyperthrust/vulkan-object/blob/main/LICENSE)
+[![Crates.io Version](https://img.shields.io/crates/v/hyperthrust-vulkan-object.svg)](https://crates.io/crates/hyperthrust-vulkan-object)
+[![docs.rs](https://img.shields.io/docsrs/hyperthrust-vulkan-object)](https://docs.rs/hyperthrust-vulkan-object)
+[![Crates.io License](https://img.shields.io/crates/l/hyperthrust-vulkan-object)](https://github.com/hyperthrust/vulkan-object/blob/main/LICENSE)
 
 Rust bindings for [vulkan-object](https://github.com/KhronosGroup/vulkan-object), providing typed access to Vulkan API metadata.
 
 This library exposes both `vk.xml` and `video.xml` at once.
+
+## Install
+
+`cargo add hyperthrust-vulkan-object`
 
 ## API
 
